@@ -9,10 +9,8 @@
 //!
 //! ```no_run
 //! use xtask::commands::publish::compute_publish_order_data;
-//! use std::path::Path;
 //!
-//! let manifest = Path::new("Cargo.toml");
-//! let order = compute_publish_order_data(manifest).unwrap();
+//! let order = compute_publish_order_data("Cargo.toml").unwrap();
 //!
 //! println!("Publish order:");
 //! for (level, packages) in order.levels.iter().enumerate() {
@@ -36,7 +34,7 @@ pub mod types;
 pub mod utils;
 
 pub use commands::{bump_version, publish, update_crate};
-pub use types::{PackageInfo, PublishOrderData};
 pub use semver::Version;
+pub use types::{PackageInfo, PublishOrderData};
 
 pub type Result<T> = anyhow::Result<T>;

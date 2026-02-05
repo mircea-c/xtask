@@ -76,17 +76,26 @@ mod tests {
             .output()
             .unwrap();
 
-        std::fs::write(root_dir_path.join("Cargo.toml"), "[workspace.package]\nversion = \"3.1.0\"")
-            .unwrap();
+        std::fs::write(
+            root_dir_path.join("Cargo.toml"),
+            "[workspace.package]\nversion = \"3.1.0\"",
+        )
+        .unwrap();
         std::fs::write(root_dir_path.join("Cargo.lock"), "").unwrap();
         std::fs::create_dir_all(root_dir_path.join("foo")).unwrap();
-        std::fs::write(root_dir_path.join("foo/Cargo.toml"), "[package]\nname = \"foo\"")
-            .unwrap();
+        std::fs::write(
+            root_dir_path.join("foo/Cargo.toml"),
+            "[package]\nname = \"foo\"",
+        )
+        .unwrap();
         std::fs::write(root_dir_path.join("foo/Cargo.lock"), "").unwrap();
 
         std::fs::create_dir_all(root_dir_path.join("bar")).unwrap();
-        std::fs::write(root_dir_path.join("bar/Cargo.toml"), "[package]\nname = \"bar\"")
-            .unwrap();
+        std::fs::write(
+            root_dir_path.join("bar/Cargo.toml"),
+            "[package]\nname = \"bar\"",
+        )
+        .unwrap();
         std::fs::write(root_dir_path.join("bar/Cargo.lock"), "").unwrap();
 
         {
