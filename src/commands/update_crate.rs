@@ -22,7 +22,7 @@ pub struct CommandArgs {
 }
 
 pub fn run(args: CommandArgs) -> Result<()> {
-    let all_cargo_tomls = common::recursive_find_files(&args.root_path, "Cargo.toml", |_| true)?;
+    let all_cargo_tomls = utils::recursive_find_files(&args.root_path, "Cargo.toml", |_| true)?;
 
     'MAIN_LOOP: for cargo_toml in all_cargo_tomls {
         info!("[{}]", cargo_toml.display());

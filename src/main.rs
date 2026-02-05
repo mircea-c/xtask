@@ -5,6 +5,7 @@ use {
 };
 
 mod commands;
+mod types;
 mod utils;
 
 #[derive(Parser)]
