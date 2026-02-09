@@ -1,0 +1,46 @@
+//! Anza XTask - Shared CI/CD automation library
+//!
+//! This library provides common operations for Rust workspace management,
+//! release automation, and CI/CD workflows across Anza repositories.
+//!
+//! # Examples
+//!
+//! ## Computing publish order
+//!
+//! ```no_run
+//! use xtask::commands::publish::compute_publish_order_data;
+//! use std::path::Path;
+//!
+//! let manifest = Path::new("Cargo.toml");
+//! let order = compute_publish_order_data(manifest).unwrap();
+//!
+//! println!("Publish order:");
+//! for (level, packages) in order.levels.iter().enumerate() {
+//!     println!("Level {}: {:?}", level, packages);
+//! }
+//! ```
+//!
+//! ## Bumping version
+//!
+//! ```no_run
+//! use xtask::commands::bump_version::{bump_version, BumpLevel};
+//! use semver::Version;
+//!
+//! let current = Version::parse("1.2.3").unwrap();
+//! let new = bump_version(&BumpLevel::Minor, &current);
+//! assert_eq!(new, Version::parse("1.3.0").unwrap());
+//! ```
+
+pub mod commands;
+pub mod types;
+pub mod utils;
+
+pub use commands::bump_version;
+pub use commands::publish;
+pub use commands::update_crate;
+
+pub use types::{PackageInfo, PublishOrderData};
+
+pub use semver::Version;
+
+pub type Result<T> = anyhow::Result<T>;

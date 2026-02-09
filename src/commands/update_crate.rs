@@ -1,5 +1,5 @@
 use {
-    crate::common,
+    crate::utils,
     anyhow::Result,
     clap::Args,
     log::{debug, info},
@@ -41,7 +41,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
         let mut doc = content.parse::<DocumentMut>()?;
         let mut need_to_write = false;
 
-        // update workspace.dependencies
         if let Some(workspace_deps) = doc
             .get_mut("workspace")
             .and_then(|ws| ws.as_table_mut())
@@ -55,7 +54,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
             }
         }
 
-        // update dependencies
         if let Some(deps) = doc
             .get_mut("dependencies")
             .and_then(|deps| deps.as_table_mut())
