@@ -36,32 +36,26 @@ pub enum BumpLevel {
 }
 
 pub fn run(args: CommandArgs) -> Result<()> {
-    // get the current version
     let current_version_str =
-        crate::common::get_current_version().context("failed to get current version")?;
+        crate::utils::get_current_version().context("failed to get current version")?;
     let current_version = Version::parse(&current_version_str)?;
 
-    // bump the version
     let new_version = bump_version(&args.level, &current_version)?;
 
-    // get all crates
-    let all_crates = crate::common::get_all_crates().context("failed to get all crates")?;
+    let all_crates = crate::utils::get_all_crates().context("failed to get all crates")?;
 
-    // update all cargo.toml
     let all_cargo_tomls =
-        crate::common::find_all_cargo_tomls().context("failed to find all cargo.toml files")?;
+        crate::utils::find_all_cargo_tomls().context("failed to find all cargo.toml files")?;
     info!("found {} cargo.toml files", all_cargo_tomls.len());
     for cargo_toml in all_cargo_tomls {
         info!("processing {}", cargo_toml.display());
 
-        // parse the cargo.toml file into a DocumentMut
         let content = fs::read_to_string(&cargo_toml)
             .context(format!("failed to read {}", cargo_toml.display()))?;
         let mut doc = content
             .parse::<DocumentMut>()
             .context(format!("failed to parse {}", cargo_toml.display()))?;
 
-        // check if workspace.package.version is the same as the current version
         if let Some(workspace_package_version_str) = doc
             .get("workspace")
             .and_then(|workspace| workspace.get("package"))
@@ -74,7 +68,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
             }
         }
 
-        // check if package.version is the same as the current version
         if let Some(package_version_str) = doc
             .get("package")
             .and_then(|package| package.get("version"))
@@ -86,7 +79,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
             }
         }
 
-        // Update versions in [workspace.dependencies] if they match `current_version`
         if let Some(dependencies) = doc
             .get("workspace")
             .and_then(|ws| ws.get("dependencies"))
@@ -124,9 +116,8 @@ pub fn run(args: CommandArgs) -> Result<()> {
             .context(format!("failed to write {}", cargo_toml.display()))?;
     }
 
-    // update all Cargo.lock files
     let all_cargo_locks =
-        crate::common::find_all_cargo_locks().context("failed to find all Cargo.lock files")?;
+        crate::utils::find_all_cargo_locks().context("failed to find all Cargo.lock files")?;
     info!("found {} Cargo.lock files", all_cargo_locks.len());
     for cargo_lock in all_cargo_locks {
         let dir = cargo_lock.parent().context(format!(

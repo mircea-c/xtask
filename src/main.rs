@@ -5,7 +5,7 @@ use {
 };
 
 mod commands;
-mod common;
+mod utils;
 
 #[derive(Parser)]
 #[command(name = "xtask", about = "Build tasks", version)]

@@ -1,5 +1,5 @@
 use {
-    crate::common::{check_docker_available, get_git_root_path},
+    crate::utils::{check_docker_available, get_git_root_path},
     anyhow::{anyhow, Result},
     cargo_metadata::{MetadataCommand, PackageId},
     clap::{Args, Subcommand},

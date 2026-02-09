@@ -1,5 +1,5 @@
 use {
-    crate::common,
+    crate::utils,
     anyhow::Result,
     clap::Args,
     log::{debug, info},
@@ -22,7 +22,7 @@ pub struct CommandArgs {
 }
 
 pub fn run(args: CommandArgs) -> Result<()> {
-    let all_cargo_tomls = common::recursive_find_files(&args.root_path, "Cargo.toml", |_| true)?;
+    let all_cargo_tomls = utils::recursive_find_files(&args.root_path, "Cargo.toml", |_| true)?;
 
     'MAIN_LOOP: for cargo_toml in all_cargo_tomls {
         info!("[{}]", cargo_toml.display());
@@ -41,7 +41,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
         let mut doc = content.parse::<DocumentMut>()?;
         let mut need_to_write = false;
 
-        // update workspace.dependencies
         if let Some(workspace_deps) = doc
             .get_mut("workspace")
             .and_then(|ws| ws.as_table_mut())
@@ -55,7 +54,6 @@ pub fn run(args: CommandArgs) -> Result<()> {
             }
         }
 
-        // update dependencies
         if let Some(deps) = doc
             .get_mut("dependencies")
             .and_then(|deps| deps.as_table_mut())
