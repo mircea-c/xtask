@@ -477,3 +477,160 @@ fn update_workspace_manifest_registry(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_compute_publish_order_with_test_workspace() {
+        let manifest = "tests/dummy-workspace/Cargo.toml";
+        let result = compute_publish_order_data(manifest);
+        assert!(result.is_ok(), "Should successfully compute order");
+        let data = result.unwrap();
+        assert!(!data.levels.is_empty(), "Should have at least one level");
+        assert!(!data.id_to_package_info.is_empty(), "Should have packages");
+    }
+
+    #[test]
+    fn test_package_info_creation() {
+        use std::collections::HashSet;
+
+        let deps = HashSet::new();
+        let pkg_info = PackageInfo {
+            name: "test-crate".to_string(),
+            path: PathBuf::from("/test/path"),
+            dependencies: deps,
+        };
+        assert_eq!(pkg_info.name, "test-crate");
+        assert_eq!(pkg_info.dependencies.len(), 0);
+    }
+
+    #[test]
+    fn test_publish_order_data_structure() {
+        let manifest = "tests/dummy-workspace/Cargo.toml";
+        let result = compute_publish_order_data(manifest);
+        assert!(result.is_ok(), "Should successfully compute order");
+        let data = result.unwrap();
+
+        for level in &data.levels {
+            for pkg_id in level {
+                assert!(
+                    data.id_to_package_info.contains_key(pkg_id),
+                    "Package {} should be in id_to_package_info map",
+                    pkg_id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dependencies_are_in_earlier_levels() {
+        let manifest = "tests/dummy-workspace/Cargo.toml";
+        let result = compute_publish_order_data(manifest);
+        assert!(result.is_ok(), "Should successfully compute order");
+        let data = result.unwrap();
+
+        let mut pkg_to_level = std::collections::HashMap::new();
+        for (level_idx, level) in data.levels.iter().enumerate() {
+            for pkg_id in level {
+                if let Some(pkg_info) = data.id_to_package_info.get(pkg_id) {
+                    pkg_to_level.insert(&pkg_info.name, level_idx);
+                }
+            }
+        }
+
+        for (level_idx, level) in data.levels.iter().enumerate() {
+            for pkg_id in level {
+                if let Some(pkg_info) = data.id_to_package_info.get(pkg_id) {
+                    for dep_id in &pkg_info.dependencies {
+                        if let Some(dep_info) = data.id_to_package_info.get(dep_id) {
+                            if let Some(&dep_level) = pkg_to_level.get(&dep_info.name) {
+                                assert!(dep_level <= level_idx,
+                                    "Dependency {} (level {}) should be published before or with {} (level {})",
+                                    dep_info.name, dep_level, pkg_info.name, level_idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_publish_order_tree_output() {
+        let manifest = "tests/dummy-workspace/Cargo.toml";
+        let result = publish_order_tree(manifest);
+        assert!(result.is_ok(), "Tree output should succeed");
+    }
+
+    #[test]
+    fn test_publish_order_json_output() {
+        let manifest = "tests/dummy-workspace/Cargo.toml";
+        let result = publish_order_json(manifest);
+        assert!(result.is_ok(), "JSON output should succeed");
+    }
+
+    #[test]
+    fn test_invalid_manifest_path() {
+        let result = compute_publish_order_data("nonexistent/Cargo.toml");
+        assert!(result.is_err(), "Should fail with invalid manifest path");
+    }
+
+    #[test]
+    fn test_run_with_json_format() {
+        let args = CommandArgs {
+            manifest_path: "tests/dummy-workspace/Cargo.toml".to_string(),
+            subcommand: PublishSubcommand::Order {
+                format: OutputFormat::Json,
+            },
+        };
+        let result = run(args);
+        assert!(result.is_ok(), "Should succeed with JSON format");
+    }
+
+    #[test]
+    fn test_run_with_tree_format() {
+        let args = CommandArgs {
+            manifest_path: "tests/dummy-workspace/Cargo.toml".to_string(),
+            subcommand: PublishSubcommand::Order {
+                format: OutputFormat::Tree,
+            },
+        };
+        let result = run(args);
+        assert!(result.is_ok(), "Should succeed with Tree format");
+    }
+
+    #[test]
+    fn test_update_workspace_manifest_registry() {
+        use std::sync::RwLock;
+        use tempfile::NamedTempFile;
+
+        // Create a temporary manifest file with workspace dependencies
+        let manifest_content = r#"
+[workspace]
+dependencies = { test-package = { version = "1.0.0", path = "../test" } }
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut temp_file, manifest_content.as_bytes()).unwrap();
+        let temp_path = temp_file.path().to_str().unwrap();
+
+        let lock = RwLock::new(());
+        let result = update_workspace_manifest_registry(temp_path, "test-package", &lock);
+
+        assert!(result.is_ok(), "Should successfully update manifest");
+
+        // Verify the registry was added
+        let updated_content = fs::read_to_string(temp_path).unwrap();
+        assert!(
+            updated_content.contains("registry"),
+            "Should contain registry field"
+        );
+        assert!(
+            updated_content.contains("kellnr"),
+            "Should set registry to kellnr"
+        );
+    }
+}
