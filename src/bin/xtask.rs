@@ -32,9 +32,8 @@ pub struct GlobalOptions {
     pub verbose: bool,
 }
 
-#[tokio::main]
-async fn main() {
-    if let Err(err) = try_main().await {
+fn main() {
+    if let Err(err) = try_main() {
         error!("Error: {err}");
         for (i, cause) in err.chain().skip(1).enumerate() {
             error!("  {}: {}", i.saturating_add(1), cause);
@@ -43,7 +42,7 @@ async fn main() {
     }
 }
 
-async fn try_main() -> Result<()> {
+fn try_main() -> Result<()> {
     let xtask = Xtask::parse();
 
     if xtask.global.verbose {
