@@ -29,6 +29,10 @@ pub enum BumpLevel {
         help = "Promote prerelease stage: alpha.n -> beta.0, beta.n -> rc.0, rc.n -> '' (removed rc prerelease)"
     )]
     PromotePreRelease,
+    #[value(
+        help = "Bump prerelease if present; otherwise bump patch (x.y.z-<tag>.n -> x.y.z-<tag>.n+1, x.y.z -> x.y.z+1)"
+    )]
+    PatchOrPreRelease,
 }
 
 pub fn run(args: CommandArgs) -> Result<()> {
@@ -187,6 +191,13 @@ pub fn bump_version(level: &BumpLevel, current: &Version) -> Result<Version> {
                 }
             }
         }
+        BumpLevel::PatchOrPreRelease => {
+            if !current.pre.is_empty() {
+                new_version = bump_version(&BumpLevel::PreRelease, current)?;
+            } else {
+                new_version = bump_version(&BumpLevel::Patch, current)?;
+            }
+        }
     }
 
     Ok(new_version)
@@ -306,6 +317,26 @@ mod tests {
             )
             .unwrap(),
             Version::parse("1.2.3").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_bump_version_patch_or_prerelease() {
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PatchOrPreRelease,
+                &Version::parse("1.2.3-alpha.0").unwrap()
+            )
+            .unwrap(),
+            Version::parse("1.2.3-alpha.1").unwrap()
+        );
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PatchOrPreRelease,
+                &Version::parse("1.2.3").unwrap()
+            )
+            .unwrap(),
+            Version::parse("1.2.4").unwrap()
         );
     }
 }
