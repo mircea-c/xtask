@@ -15,9 +15,13 @@ pub struct CommandArgs {
 
 #[derive(ValueEnum, Clone, Debug)]
 pub enum BumpLevel {
+    #[value(help = "Bump major: x.y.z -> x+1.0.0")]
     Major,
+    #[value(help = "Bump minor: x.y.z -> x.y+1.0")]
     Minor,
+    #[value(help = "Bump patch: x.y.z -> x.y.z+1")]
     Patch,
+    #[value(help = "Bump prerelease suffix: x.y.z-<tag>.n -> x.y.z-<tag>.n+1 (e.g. alpha/beta/rc)")]
     PreRelease,
 }
 
