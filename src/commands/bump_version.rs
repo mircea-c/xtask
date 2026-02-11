@@ -192,10 +192,10 @@ pub fn bump_version(level: &BumpLevel, current: &Version) -> Result<Version> {
             }
         }
         BumpLevel::PatchOrPreRelease => {
-            if !current.pre.is_empty() {
-                new_version = bump_version(&BumpLevel::PreRelease, current)?;
-            } else {
+            if current.pre.is_empty() {
                 new_version = bump_version(&BumpLevel::Patch, current)?;
+            } else {
+                new_version = bump_version(&BumpLevel::PreRelease, current)?;
             }
         }
     }
