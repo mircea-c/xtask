@@ -21,7 +21,9 @@ pub enum BumpLevel {
     Minor,
     #[value(help = "Bump patch: x.y.z -> x.y.z+1")]
     Patch,
-    #[value(help = "Bump prerelease suffix: x.y.z-<tag>.n -> x.y.z-<tag>.n+1 (e.g. alpha/beta/rc)")]
+    #[value(
+        help = "Bump prerelease suffix: x.y.z-<tag>.n -> x.y.z-<tag>.n+1 (e.g. alpha/beta/rc)"
+    )]
     PreRelease,
 }
 
@@ -173,69 +175,72 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bump_version() {
-        // bump major
-        {
-            assert_eq!(
-                bump_version(&BumpLevel::Major, &Version::parse("1.0.0").unwrap()),
-                Version::parse("2.0.0").unwrap()
-            );
+    fn test_bump_version_major() {
+        assert_eq!(
+            bump_version(&BumpLevel::Major, &Version::parse("1.0.0").unwrap()),
+            Version::parse("2.0.0").unwrap()
+        );
 
-            assert_eq!(
-                bump_version(&BumpLevel::Major, &Version::parse("1.1.0").unwrap()),
-                Version::parse("2.0.0").unwrap()
-            );
+        assert_eq!(
+            bump_version(&BumpLevel::Major, &Version::parse("1.1.0").unwrap()),
+            Version::parse("2.0.0").unwrap()
+        );
 
-            assert_eq!(
-                bump_version(&BumpLevel::Major, &Version::parse("1.1.1").unwrap()),
-                Version::parse("2.0.0").unwrap()
-            );
-        }
+        assert_eq!(
+            bump_version(&BumpLevel::Major, &Version::parse("1.1.1").unwrap()),
+            Version::parse("2.0.0").unwrap()
+        );
+    }
+    #[test]
+    fn test_bump_version_minor() {
+        assert_eq!(
+            bump_version(&BumpLevel::Minor, &Version::parse("1.0.0").unwrap()),
+            Version::parse("1.1.0").unwrap()
+        );
 
-        // bump minor
-        {
-            assert_eq!(
-                bump_version(&BumpLevel::Minor, &Version::parse("1.0.0").unwrap()),
-                Version::parse("1.1.0").unwrap()
-            );
+        assert_eq!(
+            bump_version(&BumpLevel::Minor, &Version::parse("1.2.1").unwrap()),
+            Version::parse("1.3.0").unwrap()
+        );
+    }
 
-            assert_eq!(
-                bump_version(&BumpLevel::Minor, &Version::parse("1.2.1").unwrap()),
-                Version::parse("1.3.0").unwrap()
-            );
-        }
+    #[test]
+    fn test_bump_version_patch() {
+        assert_eq!(
+            bump_version(&BumpLevel::Patch, &Version::parse("1.0.0").unwrap()),
+            Version::parse("1.0.1").unwrap()
+        );
+    }
 
-        // bump patch
-        {
-            assert_eq!(
-                bump_version(&BumpLevel::Patch, &Version::parse("1.0.0").unwrap()),
-                Version::parse("1.0.1").unwrap()
-            );
-        }
-
-        // bump pre-release
-        {
-            assert_eq!(
-                bump_version(
-                    &BumpLevel::PreRelease,
-                    &Version::parse("1.2.3-alpha.0").unwrap()
-                ),
-                Version::parse("1.2.3-alpha.1").unwrap()
-            );
-            assert_eq!(
-                bump_version(
-                    &BumpLevel::PreRelease,
-                    &Version::parse("1.2.3-beta.0").unwrap()
-                ),
-                Version::parse("1.2.3-beta.1").unwrap()
-            );
-            assert_eq!(
-                bump_version(
-                    &BumpLevel::PreRelease,
-                    &Version::parse("1.2.3-rc.0").unwrap()
-                ),
-                Version::parse("1.2.3-rc.1").unwrap()
-            );
-        }
+    #[test]
+    fn test_bump_version_prerelease() {
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PreRelease,
+                &Version::parse("1.2.3-alpha.0").unwrap()
+            ),
+            Version::parse("1.2.3-alpha.1").unwrap()
+        );
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PreRelease,
+                &Version::parse("1.2.3-alpha.1").unwrap()
+            ),
+            Version::parse("1.2.3-alpha.2").unwrap()
+        );
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PreRelease,
+                &Version::parse("1.2.3-beta.0").unwrap()
+            ),
+            Version::parse("1.2.3-beta.1").unwrap()
+        );
+        assert_eq!(
+            bump_version(
+                &BumpLevel::PreRelease,
+                &Version::parse("1.2.3-rc.0").unwrap()
+            ),
+            Version::parse("1.2.3-rc.1").unwrap()
+        );
     }
 }
