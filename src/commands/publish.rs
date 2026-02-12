@@ -484,16 +484,6 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_compute_publish_order_with_test_workspace() {
-        let manifest = "tests/dummy-workspace/Cargo.toml";
-        let result = compute_publish_order_data(manifest);
-        assert!(result.is_ok(), "Should successfully compute order");
-        let data = result.unwrap();
-        assert!(!data.levels.is_empty(), "Should have at least one level");
-        assert!(!data.id_to_package_info.is_empty(), "Should have packages");
-    }
-
-    #[test]
     fn test_package_info_creation() {
         use std::collections::HashSet;
 
@@ -513,6 +503,8 @@ mod tests {
         let result = compute_publish_order_data(manifest);
         assert!(result.is_ok(), "Should successfully compute order");
         let data = result.unwrap();
+        assert!(!data.levels.is_empty(), "Should have at least one level");
+        assert!(!data.id_to_package_info.is_empty(), "Should have packages");
 
         for level in &data.levels {
             for pkg_id in level {
