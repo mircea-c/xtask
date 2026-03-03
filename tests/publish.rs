@@ -120,8 +120,14 @@ fn test_publish_order_optional_deps() {
 
     // a should be published first, then b although it's optional.
     assert_eq!(output_json.as_array().unwrap().len(), 2);
-    assert_eq!(output_json[0][0].get("name").unwrap().as_str().unwrap(), "a");
-    assert_eq!(output_json[1][0].get("name").unwrap().as_str().unwrap(), "b");
+    assert_eq!(
+        output_json[0][0].get("name").unwrap().as_str().unwrap(),
+        "a"
+    );
+    assert_eq!(
+        output_json[1][0].get("name").unwrap().as_str().unwrap(),
+        "b"
+    );
     assert_eq!(output_json[0].as_array().unwrap().len(), 1);
     assert_eq!(output_json[1].as_array().unwrap().len(), 1);
 }
