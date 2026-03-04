@@ -70,6 +70,7 @@ pub fn run(args: CommandArgs) -> Result<()> {
 
 pub fn compute_publish_order_data(manifest_path: &str) -> Result<PublishOrderData> {
     let mut cmd = MetadataCommand::new();
+    cmd.features(cargo_metadata::CargoOpt::AllFeatures);
     cmd.manifest_path(manifest_path);
     let metadata = cmd.exec()?;
 

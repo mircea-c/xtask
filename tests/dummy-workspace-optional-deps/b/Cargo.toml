@@ -1,0 +1,10 @@
+[package]
+name = "b"
+version = { workspace = true }
+edition = { workspace = true }
+
+[features]
+A = ["dep:a"]
+
+[dependencies]
+a = { workspace = true, optional = true }
