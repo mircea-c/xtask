@@ -29,6 +29,7 @@
 //! assert_eq!(new, Version::parse("1.3.0").unwrap());
 //! ```
 
+pub mod buildkite;
 pub mod commands;
 pub mod utils;
 
