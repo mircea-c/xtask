@@ -1,8 +1,115 @@
 use {
-    anyhow::{anyhow, Result},
-    std::fs,
+    anyhow::{anyhow, Context, Result},
+    cargo_metadata::{Metadata, MetadataCommand, PackageId},
+    log::warn,
+    std::{
+        collections::{BTreeSet, HashSet},
+        fs,
+        path::{Path, PathBuf},
+    },
     toml_edit::Document,
 };
+
+/// Crates belonging to some workspace in the repo, plus the workspace roots.
+///
+/// Unioned across every workspace in the repo, since excluded directories can be
+/// workspace roots themselves and still move together on a bump.
+#[derive(Debug, Default)]
+pub struct WorkspaceMembers {
+    pub names: BTreeSet<String>,
+    pub manifests: BTreeSet<PathBuf>,
+    pub roots: BTreeSet<PathBuf>,
+}
+
+impl WorkspaceMembers {
+    pub fn contains_name(&self, name: &str) -> bool {
+        self.names.contains(name)
+    }
+
+    pub fn contains_manifest(&self, manifest: &Path) -> bool {
+        self.manifests.contains(&normalize(manifest))
+    }
+
+    pub fn is_root(&self, manifest: &Path) -> bool {
+        self.roots.contains(&normalize(manifest))
+    }
+}
+
+pub fn member_ids(metadata: &Metadata) -> HashSet<&PackageId> {
+    metadata.workspace_members.iter().collect()
+}
+
+pub fn member_names(metadata: &Metadata) -> BTreeSet<String> {
+    let ids = member_ids(metadata);
+    metadata
+        .packages
+        .iter()
+        .filter(|pkg| ids.contains(&pkg.id))
+        .map(|pkg| pkg.name.to_string())
+        .collect()
+}
+
+/// Probes only manifests declaring `[workspace]`, so a crate counts as a member
+/// only when some workspace's `members` list names it.
+///
+/// Probing every manifest would instead report every package in the repo as a
+/// member: cargo treats a package that no workspace claims as its own
+/// single-member workspace.
+pub fn get_workspace_members() -> Result<WorkspaceMembers> {
+    let mut members = WorkspaceMembers::default();
+    let mut seen_roots = HashSet::new();
+
+    for manifest in super::fs::find_all_cargo_tomls()? {
+        if !declares_workspace(&manifest)? {
+            continue;
+        }
+
+        // A manifest that cannot resolve, such as a test fixture, must not block
+        // the rest. Skipping it errs safe: its crates count as non-members, so
+        // changes to them are reported instead of allowed.
+        let metadata = match MetadataCommand::new()
+            .no_deps()
+            .manifest_path(&manifest)
+            .exec()
+        {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                warn!("skipping {}: {err}", manifest.display());
+                continue;
+            }
+        };
+
+        // Two probes can resolve to the same workspace.
+        if !seen_roots.insert(metadata.workspace_root.clone()) {
+            continue;
+        }
+
+        let ids = member_ids(&metadata);
+        for pkg in metadata.packages.iter().filter(|pkg| ids.contains(&pkg.id)) {
+            members.names.insert(pkg.name.to_string());
+            members
+                .manifests
+                .insert(normalize(pkg.manifest_path.as_std_path()));
+        }
+        members.roots.insert(normalize(&manifest));
+    }
+
+    Ok(members)
+}
+
+fn declares_workspace(manifest: &Path) -> Result<bool> {
+    let content =
+        fs::read_to_string(manifest).context(format!("failed to read {}", manifest.display()))?;
+    let doc = content
+        .parse::<Document<String>>()
+        .context(format!("failed to parse {}", manifest.display()))?;
+
+    Ok(doc.get("workspace").is_some())
+}
+
+fn normalize(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
 
 pub fn get_all_crates() -> Result<Vec<String>> {
     let cargo_tomls = super::fs::find_all_cargo_tomls()?;
