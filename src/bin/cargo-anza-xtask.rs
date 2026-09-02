@@ -27,6 +27,8 @@ enum Commands {
     Hello,
     #[command(about = "Bump version")]
     BumpVersion(xtask::commands::bump_version::CommandArgs),
+    #[command(about = "Verify the working tree is only a version bump")]
+    VerifyBump(xtask::commands::verify_bump::CommandArgs),
     #[command(about = "Update crate version")]
     UpdateCrate(xtask::commands::update_crate::CommandArgs),
     #[command(about = "Publish crates")]
@@ -65,6 +67,9 @@ fn try_main() -> Result<()> {
         Commands::Hello => xtask::commands::hello::run()?,
         Commands::BumpVersion(args) => {
             xtask::commands::bump_version::run(args)?;
+        }
+        Commands::VerifyBump(args) => {
+            xtask::commands::verify_bump::run(args)?;
         }
         Commands::UpdateCrate(args) => {
             xtask::commands::update_crate::run(args)?;
