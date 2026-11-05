@@ -1,6 +1,6 @@
 use {
     crate::utils::{
-        bump::{bump_targets, verify_changes, verify_lock_changes},
+        bump::{bump_targets, verify_changes, verify_lock_changes, LockSummary},
         cargo::WorkspaceMembers,
         find_all_cargo_locks, find_all_cargo_tomls, get_git_root_path, get_workspace_members,
         git::{
@@ -9,10 +9,12 @@ use {
         },
     },
     anyhow::{anyhow, Context, Result},
+    askama::Template,
     clap::Args,
     log::{debug, info},
     semver::Version,
     std::{
+        collections::BTreeMap,
         fs,
         path::{Path, PathBuf},
     },
@@ -20,6 +22,7 @@ use {
 };
 
 const MAX_DIFF_LINES: usize = 50;
+const MAX_PROBLEM_CHARS: usize = 40_000;
 
 #[derive(Args)]
 pub struct CommandArgs {
@@ -29,6 +32,12 @@ pub struct CommandArgs {
         help = "Revision holding the pre-bump state to compare the working tree against"
     )]
     pub base: String,
+
+    #[arg(
+        long,
+        help = "Also write what was checked as markdown to this file, pass or fail"
+    )]
+    pub report: Option<PathBuf>,
 }
 
 pub fn run(args: CommandArgs) -> Result<()> {
@@ -40,6 +49,11 @@ pub fn run(args: CommandArgs) -> Result<()> {
     verifier.check_manifests()?;
     verifier.check_locks()?;
 
+    if let Some(path) = &args.report {
+        fs::write(path, verifier.markdown()?)
+            .context(format!("failed to write {}", path.display()))?;
+    }
+
     verifier.finish()
 }
 
@@ -49,8 +63,18 @@ struct Verifier {
     members: WorkspaceMembers,
     previous: Version,
     bumped: Version,
+    report: Report,
+}
+
+type FieldChanges = BTreeMap<String, (String, String)>;
+
+#[derive(Default)]
+struct Report {
+    changed_files: usize,
+    manifests_checked: usize,
+    manifests: Vec<(String, FieldChanges)>,
+    locks: Vec<(String, LockSummary)>,
     problems: Vec<String>,
-    bumped_fields: usize,
 }
 
 impl Verifier {
@@ -73,18 +97,21 @@ impl Verifier {
             members,
             previous,
             bumped,
-            problems: vec![],
-            bumped_fields: 0,
+            report: Report::default(),
         })
     }
 
     fn check_changed_files(&mut self) -> Result<()> {
-        for path in changed_files_since(&self.base)? {
+        let changed = changed_files_since(&self.base)?;
+        self.report.changed_files = changed.len();
+        info!("{} file(s) changed since {}", changed.len(), self.base);
+
+        for path in changed {
             let name = path.file_name().unwrap_or_default();
 
             if name != "Cargo.toml" && name != "Cargo.lock" {
                 let diff = diff_since(&self.base, &path)?;
-                self.problems.push(format!(
+                self.report.problems.push(format!(
                     "  unexpected change to `{}`:\n{}",
                     path.display(),
                     truncate_diff(&diff)
@@ -92,7 +119,8 @@ impl Verifier {
             } else if !self.root.join(&path).exists() {
                 // The checks below walk the working tree, so a manifest or lock
                 // deleted since the base would otherwise go unseen.
-                self.problems
+                self.report
+                    .problems
                     .push(format!("  `{}` was removed", path.display()));
             }
         }
@@ -103,9 +131,11 @@ impl Verifier {
     fn check_manifests(&mut self) -> Result<()> {
         for manifest in find_all_cargo_tomls().context("failed to find all Cargo.toml files")? {
             let relative = repo_relative_path(&self.root, &manifest)?;
+            self.report.manifests_checked = self.report.manifests_checked.saturating_add(1);
 
             let Some(before) = show_file_at_rev(&self.base, &relative)? else {
-                self.problems
+                self.report
+                    .problems
                     .push(format!("  `{relative}` did not exist at {}", self.base));
                 continue;
             };
@@ -122,11 +152,14 @@ impl Verifier {
             );
 
             match verify_changes(&original, &modified, &expected, &manifest) {
+                Ok(()) if expected.is_empty() => debug!("verified {relative}: unchanged"),
                 Ok(()) => {
-                    self.bumped_fields = self.bumped_fields.saturating_add(expected.len());
-                    debug!("verified {relative}: {} field(s) bumped", expected.len());
+                    for (field, (old, new)) in &expected {
+                        info!("{relative}: {field} {old} -> {new}");
+                    }
+                    self.report.manifests.push((relative, expected));
                 }
-                Err(err) => self.problems.push(indent(&err)),
+                Err(err) => self.report.problems.push(indent(&err)),
             }
         }
 
@@ -138,7 +171,8 @@ impl Verifier {
             let relative = repo_relative_path(&self.root, &lock)?;
 
             let Some(before) = show_file_at_rev(&self.base, &relative)? else {
-                self.problems
+                self.report
+                    .problems
                     .push(format!("  `{relative}` did not exist at {}", self.base));
                 continue;
             };
@@ -153,30 +187,96 @@ impl Verifier {
                 &self.bumped,
                 &lock,
             ) {
-                Ok(()) => debug!("verified {relative}"),
-                Err(err) => self.problems.push(indent(&err)),
+                Ok(summary) => {
+                    info!(
+                        "{relative}: {} of {} package(s) bumped: {}",
+                        summary.bumped.len(),
+                        summary.packages,
+                        summary.bumped.join(", ")
+                    );
+                    self.report.locks.push((relative, summary));
+                }
+                Err(err) => self.report.problems.push(indent(&err)),
             }
         }
 
         Ok(())
     }
 
+    fn markdown(&self) -> Result<String> {
+        self.report
+            .markdown(&self.base, &self.previous, &self.bumped)
+    }
+
     fn finish(self) -> Result<()> {
-        if !self.problems.is_empty() {
+        let report = self.report;
+
+        if !report.problems.is_empty() {
             return Err(anyhow!(
                 "working tree is not a clean version bump of {}:\n{}",
                 self.base,
-                self.problems.join("\n")
+                report.problems.join("\n")
             ));
         }
 
         info!(
-            "verified bump {} -> {}: {} version field(s) changed, nothing else",
-            self.previous, self.bumped, self.bumped_fields
+            "verified bump {} -> {}: {} version field(s) in {} manifest(s) and {} lock package(s) changed, nothing else",
+            self.previous,
+            self.bumped,
+            report.fields(),
+            report.manifests.len(),
+            report.lock_packages()
         );
 
         Ok(())
     }
+}
+
+impl Report {
+    fn fields(&self) -> usize {
+        self.manifests.iter().map(|(_, fields)| fields.len()).sum()
+    }
+
+    fn lock_packages(&self) -> usize {
+        self.locks
+            .iter()
+            .map(|(_, summary)| summary.bumped.len())
+            .sum()
+    }
+
+    fn markdown(&self, base: &str, previous: &Version, bumped: &Version) -> Result<String> {
+        let problems = truncate_chars(&self.problems.join("\n"), MAX_PROBLEM_CHARS);
+
+        let markdown = Markdown {
+            status: if self.problems.is_empty() {
+                "passed"
+            } else {
+                "failed"
+            },
+            base,
+            previous,
+            bumped,
+            report: self,
+            backticks: code_block_backticks(&problems),
+            problems,
+        };
+
+        markdown
+            .render()
+            .context("failed to render the verify-bump report")
+    }
+}
+
+#[derive(Template)]
+#[template(path = "verify_bump.md")]
+struct Markdown<'a> {
+    status: &'a str,
+    base: &'a str,
+    previous: &'a Version,
+    bumped: &'a Version,
+    report: &'a Report,
+    backticks: String,
+    problems: String,
 }
 
 fn version_at_rev(root: &Path, rev: &str) -> Result<Version> {
@@ -240,6 +340,24 @@ fn truncate_diff(diff: &str) -> String {
     out.join("\n")
 }
 
+/// GitHub rejects comments over 65536 characters; the rest of the report is
+/// bounded by the size of the workspace, the problems are not.
+fn truncate_chars(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((cut, _)) => format!("{}\n... truncated, see the job log", &text[..cut]),
+        None => text.to_string(),
+    }
+}
+
+/// The problems go in a ``` code block in the PR comment. A diff inside can
+/// contain ``` too, which would end the block early, so open and close it
+/// with one more backtick than the longest run in `text`.
+fn code_block_backticks(text: &str) -> String {
+    let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+
+    "`".repeat(longest.saturating_add(1).max(3))
+}
+
 fn indent(err: &anyhow::Error) -> String {
     err.to_string()
         .lines()
@@ -260,5 +378,104 @@ mod tests {
         let out = truncate_diff(&long);
         assert_eq!(out.lines().count(), MAX_DIFF_LINES + 1);
         assert!(out.ends_with("    ... 3 more lines"), "{out}");
+    }
+
+    #[test]
+    fn test_code_block_backticks_longer_than_any_run() {
+        assert_eq!(code_block_backticks("plain"), "```");
+        assert_eq!(code_block_backticks("+```rust"), "````");
+    }
+
+    #[test]
+    fn test_truncate_chars() {
+        assert_eq!(truncate_chars("héllo", 5), "héllo");
+        assert_eq!(
+            truncate_chars("héllo", 2),
+            "hé\n... truncated, see the job log"
+        );
+    }
+
+    fn report() -> Report {
+        Report {
+            changed_files: 2,
+            manifests_checked: 3,
+            manifests: vec![(
+                "Cargo.toml".to_string(),
+                BTreeMap::from([(
+                    "workspace.package.version".to_string(),
+                    ("1.2.3".to_string(), "1.2.4".to_string()),
+                )]),
+            )],
+            locks: vec![(
+                "Cargo.lock".to_string(),
+                LockSummary {
+                    bumped: vec!["a".to_string(), "b".to_string()],
+                    packages: 10,
+                },
+            )],
+            problems: vec![],
+        }
+    }
+
+    fn render(report: &Report) -> String {
+        report
+            .markdown(
+                "origin/master",
+                &Version::parse("1.2.3").unwrap(),
+                &Version::parse("1.2.4").unwrap(),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn test_markdown_passed() {
+        // Exact, because a stray blank line from the template breaks a table.
+        assert_eq!(
+            render(&report()),
+            "### verify-bump passed: `1.2.3` -> `1.2.4`
+
+Compared against `origin/master`.
+
+| Check | Result |
+|---|---|
+| Changed files | 2 |
+| Manifests | 3 checked, 1 version field(s) bumped in 1 |
+| Lock files | 1 checked, 2 package(s) bumped |
+| Problems | 0 |
+
+<details><summary>Manifest fields (1)</summary>
+
+| File | Field | Before | After |
+|---|---|---|---|
+| `Cargo.toml` | `workspace.package.version` | `1.2.3` | `1.2.4` |
+
+</details>
+
+<details><summary>Lock packages (2)</summary>
+
+- `Cargo.lock`, 2 of 10: `a`, `b`
+
+</details>
+"
+        );
+    }
+
+    #[test]
+    fn test_markdown_failed() {
+        let mut report = report();
+        report
+            .problems
+            .push("  unexpected change to `README.md`:\n    +```".to_string());
+
+        let out = render(&report);
+
+        assert!(out.starts_with("### verify-bump failed"), "{out}");
+        assert!(out.contains("| Problems | 1 |"), "{out}");
+        assert!(
+            out.contains(
+                "#### Problems\n\n````\n  unexpected change to `README.md`:\n    +```\n````\n"
+            ),
+            "{out}"
+        );
     }
 }

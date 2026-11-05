@@ -161,6 +161,12 @@ pub fn verify_changes(
     ))
 }
 
+#[derive(Debug)]
+pub struct LockSummary {
+    pub bumped: Vec<String>,
+    pub packages: usize,
+}
+
 pub fn verify_lock_changes(
     before: &str,
     after: &str,
@@ -168,7 +174,7 @@ pub fn verify_lock_changes(
     current: &Version,
     new: &Version,
     file: &Path,
-) -> Result<()> {
+) -> Result<LockSummary> {
     let before_pkgs = parse_lock_packages(before)
         .context(format!("failed to parse {} before bump", file.display()))?;
     let after_pkgs = parse_lock_packages(after)
@@ -181,8 +187,10 @@ pub fn verify_lock_changes(
     // current -> new, every other package (source, checksum, dependency edges)
     // stays identical.
     let mut expected: BTreeMap<(String, String), LockPackage> = BTreeMap::new();
+    let mut bumped = vec![];
     for ((name, version), package) in &before_pkgs {
         let key = if package.local && members.contains(name) && version == &current {
+            bumped.push(name.clone());
             (name.clone(), new.clone())
         } else {
             (name.clone(), version.clone())
@@ -191,7 +199,10 @@ pub fn verify_lock_changes(
     }
 
     if expected == after_pkgs {
-        return Ok(());
+        return Ok(LockSummary {
+            bumped,
+            packages: before_pkgs.len(),
+        });
     }
 
     let mut errors = vec![];
@@ -548,7 +559,7 @@ mod tests {
     fn test_verify_lock_changes_ok() {
         let before = lock(&[("foo", "1.0.0"), ("serde", "1.0.150")]);
         let after = lock(&[("foo", "1.1.0"), ("serde", "1.0.150")]);
-        assert!(verify_lock_changes(
+        let summary = verify_lock_changes(
             &before,
             &after,
             &crates(&["foo"]),
@@ -556,7 +567,10 @@ mod tests {
             &Version::parse("1.1.0").unwrap(),
             Path::new("Cargo.lock"),
         )
-        .is_ok());
+        .unwrap();
+
+        assert_eq!(summary.bumped, vec!["foo".to_string()]);
+        assert_eq!(summary.packages, 2);
     }
 
     #[test]

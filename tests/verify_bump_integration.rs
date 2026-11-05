@@ -110,6 +110,57 @@ fn test_verify_bump_accepts_clean_bump() {
 
 #[test]
 #[serial]
+fn test_verify_bump_reports_its_work() {
+    let root_path = init_fixture();
+    defer! { cleanup(&root_path); }
+
+    bump();
+
+    let report_dir = tempfile::tempdir().unwrap();
+    let report_path = report_dir.path().join("report.md");
+    let output = xtask(&["verify-bump", "--report", report_path.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let log = stderr(&output);
+    assert!(
+        log.contains("Cargo.toml: workspace.package.version 1.2.3 -> 1.2.4"),
+        "{log}"
+    );
+    assert!(log.contains("Cargo.lock: "), "{log}");
+
+    let report = fs::read_to_string(&report_path).unwrap();
+    assert!(
+        report.starts_with("### verify-bump passed: `1.2.3` -> `1.2.4`"),
+        "{report}"
+    );
+    assert!(
+        report.contains("| `Cargo.toml` | `workspace.package.version` | `1.2.3` | `1.2.4` |"),
+        "{report}"
+    );
+}
+
+#[test]
+#[serial]
+fn test_verify_bump_reports_rejection() {
+    let root_path = init_fixture();
+    defer! { cleanup(&root_path); }
+
+    bump();
+    fs::write(root_path.join("a/src/lib.rs"), "// sneaky\n").unwrap();
+
+    let report_dir = tempfile::tempdir().unwrap();
+    let report_path = report_dir.path().join("report.md");
+    let output = xtask(&["verify-bump", "--report", report_path.to_str().unwrap()]);
+    assert!(!output.status.success(), "verify-bump should reject");
+
+    let report = fs::read_to_string(&report_path).unwrap();
+    assert!(report.starts_with("### verify-bump failed"), "{report}");
+    assert!(report.contains("| Problems | 1 |"), "{report}");
+    assert!(report.contains("    +// sneaky"), "{report}");
+}
+
+#[test]
+#[serial]
 fn test_verify_bump_detects_unrelated_file_change() {
     let root_path = init_fixture();
     defer! { cleanup(&root_path); }
